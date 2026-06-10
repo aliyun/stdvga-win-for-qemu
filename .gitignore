@@ -1,0 +1,22 @@
+# Build output
+obj/
+objfre_*/
+output/
+Install/
+staging/
+release-stage/
+.vs/
+*.vcxproj.user
+
+# Test signing artifacts
+*.pvk
+*.pfx
+*.cer
+
+# Archives
+*.zip
+*.tar.gz
+
+# IDE / tool state
+*.code-workspace
+.claude/

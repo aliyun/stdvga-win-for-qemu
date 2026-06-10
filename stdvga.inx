@@ -1,0 +1,69 @@
+;/*++
+;
+; Copyright (c) 2026 Alibaba Cloud Computing Ltd.
+;
+; Module Name:
+;    stdvga.inf
+;
+;--*/
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = Display
+ClassGUID   = {4d36e968-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderString%
+CatalogFile = stdvga.cat
+DriverVer   = 06/10/2026,1.0.0.0
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskId1%
+
+[SourceDisksFiles]
+stdvga.sys = 1
+
+[Manufacturer]
+%ManufacturerName% = Standard, NTamd64.10.0...16299
+
+[Standard.NTamd64.10.0...16299]
+%StdVga.DeviceDesc% = StdVga_Inst, PCI\VEN_1234&DEV_1111
+
+;
+; Installation Section
+;
+[StdVga_Inst]
+FeatureScore = F8
+CopyFiles    = StdVga_CopyFiles
+
+[StdVga_CopyFiles]
+stdvga.sys
+
+[StdVga_Inst.HW]
+AddReg = StdVga_HW_AddReg
+
+[StdVga_HW_AddReg]
+; No upper filters needed for KMDOD display-only driver
+
+[StdVga_Inst.Services]
+AddService = StdVga, 0x00000002, StdVga_Service_Inst
+
+[StdVga_Service_Inst]
+DisplayName    = %StdVga.SVCDESC%
+ServiceType    = 1                  ; SERVICE_KERNEL_DRIVER
+StartType      = 3                  ; SERVICE_DEMAND_START
+ErrorControl   = 0                  ; SERVICE_ERROR_IGNORE
+ServiceBinary  = %13%\stdvga.sys
+
+;
+; Strings
+;
+[Strings]
+ProviderString     = "Alibaba Cloud"
+ManufacturerName   = "QEMU"
+DiskId1            = "QEMU Standard VGA Driver Installation Disk"
+StdVga.DeviceDesc  = "QEMU Standard VGA Display Adapter"
+StdVga.SVCDESC     = "QEMU Standard VGA Display Driver"
+REG_MULTI_SZ       = 0x00010000

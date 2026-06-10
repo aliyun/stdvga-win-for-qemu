@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Win10 Release|x64">
+      <Configuration>Win10 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win11 Release|x64">
+      <Configuration>Win11 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <TemplateGuid>{1bc93793-694f-48fe-9372-81e2b05556fd}</TemplateGuid>
+    <RootNamespace>stdvga</RootNamespace>
+    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
+    <ProjectName>stdvga</ProjectName>
+    <Configuration>Win10 Release</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <SignMode>Off</SignMode>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Win10 Release|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Win11 Release|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup>
+    <TargetName>stdvga</TargetName>
+    <InfVerifEnabled>false</InfVerifEnabled>
+    <EnableInf2Cat>false</EnableInf2Cat>
+  </PropertyGroup>
+
+  <!-- Build intermediate output directories (upstream convention) -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <OutDir>objfre_win10_amd64\amd64\</OutDir>
+    <IntDir>objfre_win10_amd64\amd64\</IntDir>
+    <PackOne_InstallDir>Install\Win10\amd64\</PackOne_InstallDir>
+    <PackOne_OsMask>10_X64,Server10_X64</PackOne_OsMask>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win11 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <OutDir>objfre_win11_amd64\amd64\</OutDir>
+    <IntDir>objfre_win11_amd64\amd64\</IntDir>
+    <PackOne_InstallDir>Install\Win11\amd64\</PackOne_InstallDir>
+    <PackOne_OsMask>10_X64,Server10_X64</PackOne_OsMask>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>DXGKDDI_INTERFACE_VERSION=0x4002;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WppEnabled>false</WppEnabled>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <ExceptionHandling>false</ExceptionHandling>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>displib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Copy INF to build output directory -->
+  <Target Name="CopyInfToOutput" AfterTargets="Link">
+    <Copy SourceFiles="$(ProjectDir)stdvga.inx" DestinationFiles="$(OutDir)stdvga.inf" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Package into Install directory and generate catalog (matches upstream PackOne) -->
+  <Target Name="PackOneTarget" AfterTargets="CopyInfToOutput">
+    <MakeDir Directories="$(PackOne_InstallDir)" />
+    <Copy SourceFiles="$(OutDir)stdvga.sys" DestinationFolder="$(PackOne_InstallDir)" />
+    <Copy SourceFiles="$(OutDir)stdvga.pdb" DestinationFolder="$(PackOne_InstallDir)" />
+    <Copy SourceFiles="$(OutDir)stdvga.inf" DestinationFolder="$(PackOne_InstallDir)" />
+    <Exec Command="inf2cat /uselocaltime /driver:$(PackOne_InstallDir) /os:$(PackOne_OsMask)" />
+  </Target>
+
+  <ItemGroup>
+    <ClCompile Include="driver.cpp" />
+    <ClCompile Include="device.cpp" />
+    <ClCompile Include="hw.cpp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="driver.h" />
+    <ClInclude Include="device.h" />
+    <ClInclude Include="hw.h" />
+    <ClInclude Include="stdvga.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ResourceCompile Include="stdvga.rc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Inf Include="stdvga.inx" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+
+  <!-- Set SHA256 digest for test signing -->
+  <ItemDefinitionGroup>
+    <DriverSign>
+      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+
+  <!-- Override WDK targets that fail due to missing InfVerif.dll -->
+  <Target Name="InfVerif" />
+  <Target Name="DriverPackageTarget" />
+</Project>
