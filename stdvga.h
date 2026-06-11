@@ -99,4 +99,12 @@ typedef struct _STDVGA_DEVICE_CONTEXT {
 
     UINT                    LastSubmittedFenceId;
     UINT                    LastCompletedFenceId;
+
+    //
+    // Hot-plug worker thread tracking. Required so StopDevice can
+    // synchronously wait for the worker to exit before the driver
+    // image is unmapped (otherwise: BugCheck 0xCE).
+    //
+    PETHREAD                HotPlugThread;
+    KEVENT                  HotPlugStopEvent;
 } STDVGA_DEVICE_CONTEXT, *PSTDVGA_DEVICE_CONTEXT;

@@ -250,6 +250,31 @@ SetCurrentMode(
 // System thread to trigger hot-plug after StartDevice completes.
 // Calling DxgkCbIndicateChildStatus(StatusConnection, Connected=TRUE) forces
 // dxgkrnl to re-run mode discovery and call DxgkDdiRecommendFunctionalVidPn.
+//
+// IMPORTANT: All sleeps must be interruptible via pCtx->HotPlugStopEvent so
+// StopDevice can shut us down before the driver image is unmapped, otherwise
+// we crash with BugCheck 0xCE (DRIVER_UNLOADED_WITHOUT_CANCELLING_PENDING_OPERATIONS).
+//
+// Timing constants below are tuned empirically against cloud QEMU host I/O
+// jitter. Units are 100-nanosecond intervals (KeWaitForSingleObject
+// relative-timeout convention); negative = relative time.
+//
+//   STDVGA_HOTPLUG_PREFIRE_DELAY    Wait after StartDevice before announcing
+//                                   hot-plug. Lets dxgkrnl finish the start
+//                                   transaction and enter idle so it will
+//                                   honor the upcoming child-status change
+//                                   instead of dropping it on the floor.
+//
+//   STDVGA_HOTPLUG_DISCONNECT_HOLD  Gap between Disconnect and Connect.
+//                                   Gives dxgkrnl time to actually process
+//                                   the disconnect (invalidate cached mode
+//                                   list) before we plug back in; without
+//                                   this hold the pair is sometimes coalesced
+//                                   and the mode list is never re-queried.
+//
+#define STDVGA_HOTPLUG_PREFIRE_DELAY    (-20000000LL)   // 2.0 s
+#define STDVGA_HOTPLUG_DISCONNECT_HOLD  ( -5000000LL)   // 0.5 s
+
 static VOID
 StdVgaHotPlugWorker(_In_ PVOID Context)
 {
@@ -261,8 +286,15 @@ StdVgaHotPlugWorker(_In_ PVOID Context)
     }
 
     LARGE_INTEGER delay;
-    delay.QuadPart = -20000000LL; // 2 seconds (negative = relative)
-    KeDelayExecutionThread(KernelMode, FALSE, &delay);
+    delay.QuadPart = STDVGA_HOTPLUG_PREFIRE_DELAY;
+    NTSTATUS waitSt = KeWaitForSingleObject(&pCtx->HotPlugStopEvent,
+        Executive, KernelMode, FALSE, &delay);
+    if (waitSt != STATUS_TIMEOUT)
+    {
+        // Stop signaled: bail out without touching DxgkInterface.
+        PsTerminateSystemThread(STATUS_SUCCESS);
+        return;
+    }
 
     TraceLog("HotPlugWorker fire");
 
@@ -274,8 +306,14 @@ StdVgaHotPlugWorker(_In_ PVOID Context)
         pCtx->DxgkInterface.DeviceHandle, &childStatus);
     TraceLogStatus("HotPlug Disconnect", st);
 
-    delay.QuadPart = -5000000LL; // 500 ms
-    KeDelayExecutionThread(KernelMode, FALSE, &delay);
+    delay.QuadPart = STDVGA_HOTPLUG_DISCONNECT_HOLD;
+    waitSt = KeWaitForSingleObject(&pCtx->HotPlugStopEvent,
+        Executive, KernelMode, FALSE, &delay);
+    if (waitSt != STATUS_TIMEOUT)
+    {
+        PsTerminateSystemThread(STATUS_SUCCESS);
+        return;
+    }
 
     childStatus.HotPlug.Connected = TRUE;
     st = pCtx->DxgkInterface.DxgkCbIndicateChildStatus(
@@ -461,6 +499,11 @@ StdVgaStartDevice(
     // Launch hot-plug worker thread to trigger dxgkrnl
     // RecommendFunctionalVidPn path.
     {
+        // Initialize stop signal + thread tracking BEFORE creating the thread,
+        // so a racing StopDevice always sees a valid event.
+        KeInitializeEvent(&DevCtx->HotPlugStopEvent, NotificationEvent, FALSE);
+        DevCtx->HotPlugThread = NULL;
+
         HANDLE hThread = NULL;
         OBJECT_ATTRIBUTES oa;
         InitializeObjectAttributes(&oa, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
@@ -469,8 +512,25 @@ StdVgaStartDevice(
             StdVgaHotPlugWorker, DevCtx);
         if (NT_SUCCESS(thrSt) && hThread != NULL)
         {
+            // Hold a reference so StopDevice can KeWaitForSingleObject on it
+            // before the driver image is unmapped.
+            PETHREAD pThread = NULL;
+            NTSTATUS refSt = ObReferenceObjectByHandle(
+                hThread, THREAD_ALL_ACCESS, *PsThreadType,
+                KernelMode, (PVOID*)&pThread, NULL);
             ZwClose(hThread);
-            TraceLog("StartDevice spawned HotPlugWorker");
+            if (NT_SUCCESS(refSt))
+            {
+                DevCtx->HotPlugThread = pThread;
+                TraceLog("StartDevice spawned HotPlugWorker");
+            }
+            else
+            {
+                // Reference failed: signal stop so the orphan worker bails out
+                // ASAP instead of touching DxgkInterface after unload.
+                KeSetEvent(&DevCtx->HotPlugStopEvent, IO_NO_INCREMENT, FALSE);
+                TraceLogStatus("StartDevice HotPlug ObRef FAIL", refSt);
+            }
         }
         else
         {
@@ -491,9 +551,45 @@ StdVgaStopDevice(
     PAGED_CODE();
 
     DevCtx->DriverStarted = FALSE;
+
+    //
+    // Drain the hot-plug worker BEFORE we let DXGK unload the driver image.
+    // Skipping this caused BugCheck 0xCE
+    // (DRIVER_UNLOADED_WITHOUT_CANCELLING_PENDING_OPERATIONS) when the worker
+    // was still sleeping inside its delay and the module got unmapped under it.
+    //
+    StdVgaDrainHotPlugWorker(DevCtx);
+
     StdVgaHwClose(&DevCtx->Hw);
 
     return STATUS_SUCCESS;
+}
+
+//
+// Synchronously drain the hot-plug worker spawned by StartDevice.
+// Idempotent: safe to call from StopDevice and RemoveDevice both.
+// Must be called while DevCtx is still valid (before ExFreePoolWithTag),
+// otherwise the worker may wake up and dereference freed memory or run on
+// an unmapped driver image (BugCheck 0xCE).
+//
+VOID
+StdVgaDrainHotPlugWorker(
+    PSTDVGA_DEVICE_CONTEXT DevCtx
+    )
+{
+    PAGED_CODE();
+
+    if (DevCtx == NULL)
+        return;
+
+    if (DevCtx->HotPlugThread != NULL)
+    {
+        KeSetEvent(&DevCtx->HotPlugStopEvent, IO_NO_INCREMENT, FALSE);
+        KeWaitForSingleObject(DevCtx->HotPlugThread, Executive,
+            KernelMode, FALSE, NULL);
+        ObDereferenceObject(DevCtx->HotPlugThread);
+        DevCtx->HotPlugThread = NULL;
+    }
 }
 
 _Use_decl_annotations_

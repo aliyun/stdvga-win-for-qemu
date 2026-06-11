@@ -167,6 +167,11 @@ StdVgaQueryVidPnHWCapability(
     _Inout_ DXGKARG_QUERYVIDPNHWCAPABILITY*     pVidPnHWCaps
     );
 
+VOID
+StdVgaDrainHotPlugWorker(
+    _In_ PSTDVGA_DEVICE_CONTEXT DevCtx
+    );
+
 NTSTATUS
 StdVgaStopDeviceAndReleasePostDisplayOwnership(
     _In_  PSTDVGA_DEVICE_CONTEXT        DevCtx,

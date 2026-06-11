@@ -109,6 +109,15 @@ StdVgaDdiRemoveDevice(
 
     if (pDeviceContext != NULL)
     {
+        //
+        // Drain the hot-plug worker BEFORE freeing DevCtx. Some PnP teardown
+        // sequences hand us RemoveDevice without a preceding StopDevice
+        // (e.g. driver delete during install/uninstall stress), and the
+        // worker would otherwise wake up on a freed/unmapped image and crash
+        // with BugCheck 0xCE
+        // (DRIVER_UNLOADED_WITHOUT_CANCELLING_PENDING_OPERATIONS).
+        //
+        StdVgaDrainHotPlugWorker((PSTDVGA_DEVICE_CONTEXT)pDeviceContext);
         ExFreePoolWithTag(pDeviceContext, STDVGA_TAG);
     }
     return STATUS_SUCCESS;
