@@ -57,9 +57,10 @@ Remove-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuratio
 Remove-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity' -Recurse -Force -ErrorAction SilentlyContinue
 
 # Restart the display device (no reboot needed)
-$dev = (Get-PnpDevice | Where-Object { ($_.HardwareID | Where-Object { $_ -like '*VEN_1234&DEV_1111*' }) }).InstanceId
-Disable-PnpDevice -InstanceId $dev -Confirm:$false
-Enable-PnpDevice -InstanceId $dev -Confirm:$false
+$dev = (Get-PnpDevice -PresentOnly | Where-Object {
+    $_.Class -eq 'Display' -and $_.HardwareID -match 'VEN_1234&DEV_1111'
+} | Select-Object -First 1).InstanceId
+pnputil /restart-device "$dev"
 ```
 
 ## License
