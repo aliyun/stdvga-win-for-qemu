@@ -1,3 +1,15 @@
+> **⚠️ This project has moved.**
+>
+> This driver has been contributed to and is now maintained upstream as part of the
+> [kvm-guest-drivers-windows](https://github.com/virtio-win/kvm-guest-drivers-windows)
+> project under the [`stdvga/`](https://github.com/virtio-win/kvm-guest-drivers-windows/tree/master/stdvga) directory.
+>
+> Please file all future issues and pull requests at the new repository.
+>
+> This repository is preserved as a historical archive and will no longer receive updates.
+
+---
+
 # QEMU Standard VGA Display Driver for Windows
 
 A Windows Kernel Mode Display-Only Driver (KMDOD) for the QEMU Standard VGA device (PCI VEN_1234 / DEV_1111).
